@@ -3,9 +3,8 @@ Author: Eireann Coelho
 Course: UO CS441
 Date: Fall 2024
 
-============================================================
+
 Overview
-============================================================
 
 This project is an interactive 3D “Nutcracker Room” scene built using Modern OpenGL (3.3 Core). 
 The scene features:
@@ -25,9 +24,9 @@ The project demonstrates:
 - Procedural shading (tree needles, curtain folds)
 - Transformations and scene composition
 
-============================================================
+
 Controls
-============================================================
+
 
 W / A / S / D  — Move the camera  
 Mouse Look     — Look around  
@@ -35,9 +34,9 @@ ESC            — Unlock mouse
 Left Click     — Relock mouse  
 G              — Grow the tree  
 
-============================================================
+
 Project Structure
-============================================================
+
 
 finalproject/
 │
@@ -56,9 +55,9 @@ finalproject/
     ├── room.vert
     └── room.frag
 
-============================================================
+
 Building the Project
-============================================================
+
 
 I spent most of my time working on the tree elements of the project. I struggled with
 aligning the tree to the floor while also getting it to grow. at first I thought I had
@@ -67,9 +66,9 @@ find a way to grow the tree vertically up and horizontally out so that the tree
 was not conceled under the floor but on top of it. I wishj i could have put more detail into 
 the decorations and the room to amke the whole scene come to life. 
 
-============================================================
+
 Geometry Implemented
-============================================================
+
 
 ROOM  
 - Floor, ceiling, walls  
@@ -100,9 +99,9 @@ LIGHTS
 - Emissive, pulsing tree bulbs  
 - Star with gold override color
 
-============================================================
+
 Shader Features
-============================================================
+
 
 Fragment Shader:
 - Ambient + diffuse + specular lighting
@@ -115,9 +114,9 @@ Vertex Shader:
 - Standard MVP transform
 - Pass-through normals and UVs
 
-============================================================
+
 Known Limitations
-============================================================
+
 
 - No shadow mapping (curtains do not cast shadows onto the room).  
 - Lighting is simplified and not PBR.  
