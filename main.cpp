@@ -19,6 +19,8 @@
 #include "geometry/window_geometry.h"
 #include "geometry/mouse_geometry.h"
 #include "geometry/picture_frame_geometry.h"
+#include "geometry/forest_tree_geometry.h"
+#include "geometry/grandfather_clock_geometry.h"
 
 
 // ===== CAMERA GLOBALS =====
@@ -48,7 +50,10 @@ const float MICE_RUN_DURATION = 3.0f;
 float doorOpenAmount = 0.0f;  // 0=closed, 1=fully open
 bool doorOpening = false;
 const float DOOR_WIDTH = 2.5f;
-const float DOOR_HEIGHT = 3.0f;
+const float DOOR_HEIGHT = 3.0f;  // door from floor (y=0) to y=3
+
+// Snow room particles
+const int N_SNOW = 900;
 
 
 // --- Utility: load shader from file ---
@@ -184,7 +189,7 @@ bool rayIntersectsDoor(glm::vec3 rayOrigin, glm::vec3 rayDir) {
     float t = (wallX - rayOrigin.x) / rayDir.x;
     if (t <= 0.0f) return false;
     glm::vec3 hit = rayOrigin + t * rayDir;
-    return hit.y >= 1.0f && hit.y <= 4.0f && hit.z >= -1.25f && hit.z <= 1.25f;
+    return hit.y >= 0.0f && hit.y <= 3.0f && hit.z >= -1.25f && hit.z <= 1.25f;
 }
 
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
@@ -679,6 +684,61 @@ int main() {
     glEnableVertexAttribArray(2);
     glBindVertexArray(0);
 
+    // === FOREST TREE SILHOUETTES (grey 2D trees for snow room walls) ===
+    std::vector<Vertex> forestTreeVerts;
+    std::vector<unsigned int> forestTreeIdx;
+    GenerateForestTreeMesh(forestTreeVerts, forestTreeIdx, 0.8f, 1.5f);
+    GLuint forestTreeVAO, forestTreeVBO, forestTreeEBO;
+    glGenVertexArrays(1, &forestTreeVAO);
+    glGenBuffers(1, &forestTreeVBO);
+    glGenBuffers(1, &forestTreeEBO);
+    glBindVertexArray(forestTreeVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, forestTreeVBO);
+    glBufferData(GL_ARRAY_BUFFER, forestTreeVerts.size() * sizeof(Vertex), forestTreeVerts.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, forestTreeEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, forestTreeIdx.size() * sizeof(unsigned int), forestTreeIdx.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3*sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(6*sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glBindVertexArray(0);
+
+    // === GRANDFATHER CLOCK (back wall, between curtains) ===
+    std::vector<Vertex> clockVerts;
+    std::vector<unsigned int> clockIdx;
+    GenerateGrandfatherClockMesh(clockVerts, clockIdx);
+    GLuint clockVAO, clockVBO, clockEBO;
+    glGenVertexArrays(1, &clockVAO);
+    glGenBuffers(1, &clockVBO);
+    glGenBuffers(1, &clockEBO);
+    glBindVertexArray(clockVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, clockVBO);
+    glBufferData(GL_ARRAY_BUFFER, clockVerts.size() * sizeof(Vertex), clockVerts.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, clockEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, clockIdx.size() * sizeof(unsigned int), clockIdx.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3*sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(6*sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glBindVertexArray(0);
+
+    // Snow particles (falling in snow room x 5-25, z -5 to 5)
+    std::vector<glm::vec3> snowPositions(N_SNOW);
+    std::mt19937 snowRng(42);
+    std::uniform_real_distribution<float> snowX(5.5f, 24.5f);
+    std::uniform_real_distribution<float> snowZ(-4.5f, 4.5f);
+    std::uniform_real_distribution<float> snowY(0.1f, 4.9f);
+    std::uniform_real_distribution<float> snowSpeed(0.3f, 0.8f);
+    for (int i = 0; i < N_SNOW; i++) {
+        snowPositions[i] = glm::vec3(snowX(snowRng), snowY(snowRng), snowZ(snowRng));
+    }
+    std::vector<float> snowSpeeds(N_SNOW);
+    for (int i = 0; i < N_SNOW; i++) snowSpeeds[i] = snowSpeed(snowRng);
+
     // --- Main Loop ---
     while (!glfwWindowShouldClose(window)) {
         float currentFrame = glfwGetTime();
@@ -791,6 +851,17 @@ int main() {
         glUniform1i(glGetUniformLocation(roomShader, "isCurtain"), 0);
         glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 0);
 
+        // === Draw Grandfather Clock (back wall, between curtains, 3D - slightly out from wall) ===
+        glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 1);
+        glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 0.25f, 0.18f, 0.12f);  // dark wood
+        glm::mat4 clockM = glm::mat4(1.0f);
+        clockM = glm::translate(clockM, glm::vec3(0.0f, 0.0f, -4.92f));  // out from wall (depth 0.08)
+        clockM = glm::scale(clockM, glm::vec3(1.0f));
+        glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(clockM));
+        glBindVertexArray(clockVAO);
+        glDrawElements(GL_TRIANGLES, clockIdx.size(), GL_UNSIGNED_INT, 0);
+        glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 0);
+
         // === Draw Windows (left wall x=-5, equally spaced, dark blue night sky) ===
         glUniform1i(glGetUniformLocation(roomShader, "isWindow"), 1);
         glUniform3f(glGetUniformLocation(roomShader, "windowColor"), 0.05f, 0.08f, 0.2f);  // dark blue night
@@ -808,22 +879,22 @@ int main() {
         glDrawElements(GL_TRIANGLES, windowIdx.size(), GL_UNSIGNED_INT, 0);
         glUniform1i(glGetUniformLocation(roomShader, "isWindow"), 0);
 
-        // === Draw Picture Frames (flower on left wall, cactus on right wall) ===
-        glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 1);
-        glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 0.4f, 0.25f, 0.15f);  // wood
-        glUniform1i(glGetUniformLocation(roomShader, "isPainting"), 0);
-        glBindVertexArray(frameVAO);
-        // Left wall: flower painting at x=-5 (face +X into room)
-        glm::mat4 frameLeft = glm::mat4(1.0f);
-        frameLeft = glm::translate(frameLeft, glm::vec3(-4.99f, 2.5f, 0.0f));
-        frameLeft = glm::rotate(frameLeft, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-        glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(frameLeft));
-        glDrawElements(GL_TRIANGLES, frameBorderCount, GL_UNSIGNED_INT, 0);
-        glUniform1i(glGetUniformLocation(roomShader, "isPainting"), 1);
-        glUniform1i(glGetUniformLocation(roomShader, "paintingType"), 0);
-        glDrawElements(GL_TRIANGLES, frameIdx.size() - frameBorderCount, GL_UNSIGNED_INT, (void*)(frameBorderCount * sizeof(unsigned int)));
-        glUniform1i(glGetUniformLocation(roomShader, "isPainting"), 0);
-        glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 0);
+        // === Draw Picture Frame (right wall, same blue as snow room - only when door closed) ===
+        if (doorOpenAmount < 0.01f) {
+            glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 1);
+            glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 0.4f, 0.25f, 0.15f);  // wood frame
+            glUniform1i(glGetUniformLocation(roomShader, "isPainting"), 0);
+            glBindVertexArray(frameVAO);
+            glm::mat4 frameRight = glm::mat4(1.0f);
+            frameRight = glm::translate(frameRight, glm::vec3(4.99f, 2.5f, 0.0f));
+            frameRight = glm::rotate(frameRight, glm::radians(90.0f), glm::vec3(0, 1, 0));
+            glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(frameRight));
+            glDrawElements(GL_TRIANGLES, frameBorderCount, GL_UNSIGNED_INT, 0);
+            glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 0.68f, 0.85f, 0.95f);  // same as snow room walls
+            glDrawElements(GL_TRIANGLES, frameIdx.size() - frameBorderCount, GL_UNSIGNED_INT, (void*)(frameBorderCount * sizeof(unsigned int)));
+            glUniform1i(glGetUniformLocation(roomShader, "isPainting"), 0);
+            glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 0);
+        }
 
         // === Draw Mice (after tree stops growing, run left to right) ===
         if (miceStartTime >= 0.0f) {
@@ -846,17 +917,85 @@ int main() {
             }
         }
 
-        // === Draw Second Room FIRST (behind door - shares right wall at x=5) ===
+        // === Draw Snow Room FIRST (behind door - white floor/ceiling, light blue walls) ===
         if (doorOpenAmount > 0.01f) {
             glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 0);
+            glUniform1i(glGetUniformLocation(roomShader, "isSnowSurface"), 1);
             glBindVertexArray(room2VAO);
             glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
-            glUniform3f(glGetUniformLocation(roomShader, "wallColor"), 1.0f, 1.0f, 1.0f);  // floor
+            glUniform3f(glGetUniformLocation(roomShader, "wallColor"), 1.0f, 1.0f, 1.0f);  // floor white
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-            glUniform3f(glGetUniformLocation(roomShader, "wallColor"), 1.0f, 1.0f, 1.0f);  // ceiling
+            glUniform3f(glGetUniformLocation(roomShader, "wallColor"), 1.0f, 1.0f, 1.0f);  // ceiling white
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (void*)(6 * sizeof(unsigned int)));
-            glUniform3f(glGetUniformLocation(roomShader, "wallColor"), 0.68f, 0.85f, 0.95f);  // light blue walls
+            glUniform1i(glGetUniformLocation(roomShader, "isSnowSurface"), 0);
+            glUniform1i(glGetUniformLocation(roomShader, "isSnowSurface"), 1);
+            glUniform3f(glGetUniformLocation(roomShader, "wallColor"), 0.68f, 0.85f, 0.95f);  // light blue all walls
             glDrawElements(GL_TRIANGLES, 18, GL_UNSIGNED_INT, (void*)(12 * sizeof(unsigned int)));
+            glUniform1i(glGetUniformLocation(roomShader, "isSnowSurface"), 0);
+
+            // Grey forest trees - trunk base at floor, overlapping like back wall on all walls
+            glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 1);
+            glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 0.4f, 0.4f, 0.45f);
+            glBindVertexArray(forestTreeVAO);
+            // Back wall - trees with overlap, trunk base at floor (y=0)
+            float backZ[] = {-4.2f,-3.8f,-2.9f,-2.1f,-1.8f,-0.5f,0.2f,0.8f,1.5f,2.0f,2.8f,3.8f,4.1f};
+            float backY[] = {0.0f,0.5f,0.9f,1.3f,1.8f,2.2f,2.6f,3.0f,3.5f};
+            for (int i = 0; i < 13; i++) {
+                for (int j = 0; j < 9; j++) {
+                    glm::mat4 T = glm::mat4(1.0f);
+                    T = glm::translate(T, glm::vec3(24.99f, backY[j], backZ[i]));
+                    T = glm::rotate(T, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+                    T = glm::scale(T, glm::vec3(0.6f + (i + j) % 4 * 0.25f));
+                    glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(T));
+                    glDrawElements(GL_TRIANGLES, forestTreeIdx.size(), GL_UNSIGNED_INT, 0);
+                }
+            }
+            // Left wall - same overlap logic, trunk at floor
+            float leftX[] = {6.2f,7.5f,8.8f,10.2f,11.5f,12.9f,14.2f,15.6f,16.9f,18.3f,19.6f,21.0f,22.3f,23.7f};
+            float leftY[] = {0.0f,0.5f,0.9f,1.3f,1.8f,2.2f,2.6f,3.0f,3.5f};
+            for (int i = 0; i < 14; i++) {
+                for (int j = 0; j < 9; j++) {
+                    glm::mat4 T = glm::mat4(1.0f);
+                    T = glm::translate(T, glm::vec3(leftX[i], leftY[j], -4.99f));
+                    T = glm::scale(T, glm::vec3(0.6f + (i + j) % 4 * 0.25f));
+                    glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(T));
+                    glDrawElements(GL_TRIANGLES, forestTreeIdx.size(), GL_UNSIGNED_INT, 0);
+                }
+            }
+            // Right wall - same overlap logic
+            for (int i = 0; i < 14; i++) {
+                for (int j = 0; j < 9; j++) {
+                    glm::mat4 T = glm::mat4(1.0f);
+                    T = glm::translate(T, glm::vec3(leftX[i], leftY[j], 4.99f));
+                    T = glm::rotate(T, glm::radians(180.0f), glm::vec3(0, 1, 0));
+                    T = glm::scale(T, glm::vec3(0.6f + (i + j) % 4 * 0.25f));
+                    glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(T));
+                    glDrawElements(GL_TRIANGLES, forestTreeIdx.size(), GL_UNSIGNED_INT, 0);
+                }
+            }
+            glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 0);
+
+            // Falling snow - white circles
+            for (int i = 0; i < N_SNOW; i++) {
+                snowPositions[i].y -= snowSpeeds[i] * deltaTime;
+                if (snowPositions[i].y < 0.0f) {
+                    snowPositions[i].y = 4.9f;
+                    snowPositions[i].x = snowX(snowRng);
+                    snowPositions[i].z = snowZ(snowRng);
+                }
+            }
+            glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 1);
+            glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 1.0f, 1.0f, 1.0f);
+            glBindVertexArray(sphereVAO);
+            for (int i = 0; i < N_SNOW; i++) {
+                glm::mat4 snowM = glm::mat4(1.0f);
+                snowM = glm::translate(snowM, snowPositions[i]);
+                snowM = glm::scale(snowM, glm::vec3(0.04f));
+                glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(snowM));
+                glDrawElements(GL_TRIANGLES, sphereIdx.size(), GL_UNSIGNED_INT, 0);
+            }
+            glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 0);
+
             glUniform3f(glGetUniformLocation(roomShader, "wallColor"), 0.55f, 0.35f, 0.20f);
         }
 
@@ -869,12 +1008,12 @@ int main() {
             glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 0.55f, 0.35f, 0.20f);  // match wall
             glBindVertexArray(doorVAO);
             glm::mat4 doorLeft = glm::mat4(1.0f);
-            doorLeft = glm::translate(doorLeft, glm::vec3(5.0f, 2.5f, leftPanelZ));
+            doorLeft = glm::translate(doorLeft, glm::vec3(5.0f, 1.5f, leftPanelZ));
             doorLeft = glm::rotate(doorLeft, glm::radians(-90.0f), glm::vec3(0, 1, 0));
             glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(doorLeft));
             glDrawElements(GL_TRIANGLES, doorIdx.size(), GL_UNSIGNED_INT, 0);
             glm::mat4 doorRight = glm::mat4(1.0f);
-            doorRight = glm::translate(doorRight, glm::vec3(5.0f, 2.5f, rightPanelZ));
+            doorRight = glm::translate(doorRight, glm::vec3(5.0f, 1.5f, rightPanelZ));
             doorRight = glm::rotate(doorRight, glm::radians(-90.0f), glm::vec3(0, 1, 0));
             glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(doorRight));
             glDrawElements(GL_TRIANGLES, doorIdx.size(), GL_UNSIGNED_INT, 0);

@@ -9,7 +9,9 @@ SOURCES = main.cpp \
           geometry/curtain_geometry.cpp \
           geometry/window_geometry.cpp \
           geometry/mouse_geometry.cpp \
-          geometry/picture_frame_geometry.cpp
+          geometry/picture_frame_geometry.cpp \
+          geometry/forest_tree_geometry.cpp \
+          geometry/grandfather_clock_geometry.cpp
 
 OBJECTS = $(SOURCES:.cpp=.o)
 

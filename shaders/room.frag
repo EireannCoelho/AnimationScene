@@ -35,6 +35,8 @@ uniform vec3 windowColor;
 uniform int isPainting;
 uniform int paintingType;  // 0=flower, 1=cactus
 
+uniform int isSnowSurface;  // 1 = brighter ambient for white floor/ceiling
+
 void main()
 {
     vec3 baseColor;
@@ -168,7 +170,8 @@ void main()
     vec3 L = normalize(lightPos - fragPos);
     vec3 V = normalize(viewPos - fragPos);
 
-    vec3 ambient  = 0.18 * baseColor;
+    float ambientFactor = (isSnowSurface == 1) ? 0.85 : 0.18;
+    vec3 ambient  = ambientFactor * baseColor;
     float diff    = max(dot(norm, L), 0.0);
     vec3 diffuse  = diff * baseColor;
 
