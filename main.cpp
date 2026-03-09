@@ -706,18 +706,55 @@ int main() {
     glBindVertexArray(0);
 
     // === GRANDFATHER CLOCK (back wall, between curtains) ===
-    std::vector<Vertex> clockVerts;
-    std::vector<unsigned int> clockIdx;
-    GenerateGrandfatherClockMesh(clockVerts, clockIdx);
-    GLuint clockVAO, clockVBO, clockEBO;
-    glGenVertexArrays(1, &clockVAO);
-    glGenBuffers(1, &clockVBO);
-    glGenBuffers(1, &clockEBO);
-    glBindVertexArray(clockVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, clockVBO);
-    glBufferData(GL_ARRAY_BUFFER, clockVerts.size() * sizeof(Vertex), clockVerts.data(), GL_STATIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, clockEBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, clockIdx.size() * sizeof(unsigned int), clockIdx.data(), GL_STATIC_DRAW);
+    std::vector<Vertex> clockBodyVerts, clockFaceVerts, clockHandsVerts;
+    std::vector<unsigned int> clockBodyIdx, clockFaceIdx, clockHandsIdx;
+    GenerateGrandfatherClockBody(clockBodyVerts, clockBodyIdx);
+    GenerateClockFace(clockFaceVerts, clockFaceIdx);
+    GenerateClockHands(clockHandsVerts, clockHandsIdx);
+
+    GLuint clockBodyVAO, clockBodyVBO, clockBodyEBO;
+    glGenVertexArrays(1, &clockBodyVAO);
+    glGenBuffers(1, &clockBodyVBO);
+    glGenBuffers(1, &clockBodyEBO);
+    glBindVertexArray(clockBodyVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, clockBodyVBO);
+    glBufferData(GL_ARRAY_BUFFER, clockBodyVerts.size() * sizeof(Vertex), clockBodyVerts.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, clockBodyEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, clockBodyIdx.size() * sizeof(unsigned int), clockBodyIdx.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3*sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(6*sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glBindVertexArray(0);
+
+    GLuint clockFaceVAO, clockFaceVBO, clockFaceEBO;
+    glGenVertexArrays(1, &clockFaceVAO);
+    glGenBuffers(1, &clockFaceVBO);
+    glGenBuffers(1, &clockFaceEBO);
+    glBindVertexArray(clockFaceVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, clockFaceVBO);
+    glBufferData(GL_ARRAY_BUFFER, clockFaceVerts.size() * sizeof(Vertex), clockFaceVerts.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, clockFaceEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, clockFaceIdx.size() * sizeof(unsigned int), clockFaceIdx.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3*sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(6*sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glBindVertexArray(0);
+
+    GLuint clockHandsVAO, clockHandsVBO, clockHandsEBO;
+    glGenVertexArrays(1, &clockHandsVAO);
+    glGenBuffers(1, &clockHandsVBO);
+    glGenBuffers(1, &clockHandsEBO);
+    glBindVertexArray(clockHandsVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, clockHandsVBO);
+    glBufferData(GL_ARRAY_BUFFER, clockHandsVerts.size() * sizeof(Vertex), clockHandsVerts.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, clockHandsEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, clockHandsIdx.size() * sizeof(unsigned int), clockHandsIdx.data(), GL_STATIC_DRAW);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3*sizeof(float)));
@@ -851,15 +888,24 @@ int main() {
         glUniform1i(glGetUniformLocation(roomShader, "isCurtain"), 0);
         glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 0);
 
-        // === Draw Grandfather Clock (back wall, between curtains, 3D - slightly out from wall) ===
-        glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 1);
-        glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 0.25f, 0.18f, 0.12f);  // dark wood
+        // === Draw Grandfather Clock (back wall, between curtains, 3D boxes) ===
         glm::mat4 clockM = glm::mat4(1.0f);
-        clockM = glm::translate(clockM, glm::vec3(0.0f, 0.0f, -4.92f));  // out from wall (depth 0.08)
-        clockM = glm::scale(clockM, glm::vec3(1.0f));
+        clockM = glm::translate(clockM, glm::vec3(0.0f, 0.0f, -4.7f));  // extends from wall
+
+        glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 1);
+        glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 0.25f, 0.18f, 0.12f);  // dark wood body
         glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(clockM));
-        glBindVertexArray(clockVAO);
-        glDrawElements(GL_TRIANGLES, clockIdx.size(), GL_UNSIGNED_INT, 0);
+        glBindVertexArray(clockBodyVAO);
+        glDrawElements(GL_TRIANGLES, clockBodyIdx.size(), GL_UNSIGNED_INT, 0);
+
+        glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 1.0f, 1.0f, 1.0f);  // white clock face
+        glBindVertexArray(clockFaceVAO);
+        glDrawElements(GL_TRIANGLES, clockFaceIdx.size(), GL_UNSIGNED_INT, 0);
+
+        glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 0.15f, 0.12f, 0.1f);  // dark hands
+        glBindVertexArray(clockHandsVAO);
+        glDrawElements(GL_TRIANGLES, clockHandsIdx.size(), GL_UNSIGNED_INT, 0);
+
         glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 0);
 
         // === Draw Windows (left wall x=-5, equally spaced, dark blue night sky) ===
