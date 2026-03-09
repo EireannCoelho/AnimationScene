@@ -32,6 +32,9 @@ uniform int isCurtain;
 uniform int isWindow;
 uniform vec3 windowColor;
 
+uniform int isPainting;
+uniform int paintingType;  // 0=flower, 1=cactus
+
 void main()
 {
     vec3 baseColor;
@@ -113,6 +116,44 @@ void main()
         baseColor += vec3(0.15, 0.15, 0.20);
     }
 
+    else if (isPainting == 1) {
+        // Procedural paintings: flower or cactus
+        vec2 uv = fragUV;
+        vec2 center = vec2(0.5, 0.5);
+
+        if (paintingType == 0) {
+            // Flower: red/pink petals around center
+            float dist = length(uv - center);
+            float angle = atan(uv.y - center.y, uv.x - center.x);
+            float petals = 5.0;
+            float petal = sin(angle * petals) * 0.15 + 0.35;
+            float inPetal = smoothstep(petal, petal - 0.08, dist);
+            vec3 petalColor = vec3(1.0, 0.4, 0.5);
+            vec3 centerColor = vec3(1.0, 0.9, 0.3);
+            float inCenter = smoothstep(0.12, 0.08, dist);
+            baseColor = mix(vec3(0.95, 0.9, 0.85), petalColor, inPetal);
+            baseColor = mix(baseColor, centerColor, inCenter);
+        }
+        else {
+            // Cactus: green body with arms
+            float dist = length(uv - center);
+            float angle = atan(uv.y - center.y, uv.x - center.x);
+            // Main body - elongated oval
+            vec2 scaled = (uv - center) * vec2(0.8, 1.2);
+            float body = 1.0 - smoothstep(0.25, 0.35, length(scaled));
+            // Arms - simple rectangles
+            float arm1 = smoothstep(0.15, 0.2, abs(uv.x - center.x - 0.2)) *
+                        smoothstep(0.4, 0.35, abs(uv.y - center.y));
+            float arm2 = smoothstep(0.15, 0.2, abs(uv.x - center.x + 0.15)) *
+                        smoothstep(0.35, 0.3, abs(uv.y - center.y + 0.1));
+            vec3 cactusGreen = vec3(0.2, 0.55, 0.25);
+            vec3 darkGreen = vec3(0.15, 0.4, 0.18);
+            baseColor = vec3(0.92, 0.88, 0.8);  // canvas
+            baseColor = mix(baseColor, cactusGreen, body);
+            baseColor = mix(baseColor, darkGreen, arm1);
+            baseColor = mix(baseColor, darkGreen, arm2);
+        }
+    }
 
     // 5. Walls / floor / ceiling
     else {

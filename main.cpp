@@ -12,9 +12,13 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include "geometry/room_geometry.h"
+#include "geometry/room2_geometry.h"
 #include "geometry/tree_geometry.h"
 #include "geometry/mesh_helpers.h"
 #include "geometry/curtain_geometry.h"
+#include "geometry/window_geometry.h"
+#include "geometry/mouse_geometry.h"
+#include "geometry/picture_frame_geometry.h"
 
 
 // ===== CAMERA GLOBALS =====
@@ -34,6 +38,17 @@ float lastFrame = 0.0f;
 float treeGrowth = 0.7f;
 float targetTreeGrowth = 0.7f;
 bool growingTree = false;
+
+// Mice: run after tree stops growing
+bool treeJustFinished = false;
+float miceStartTime = -1.0f;
+const float MICE_RUN_DURATION = 3.0f;
+
+// Door: opened by clicking cactus painting
+float doorOpenAmount = 0.0f;  // 0=closed, 1=fully open
+bool doorOpening = false;
+const float DOOR_WIDTH = 2.5f;
+const float DOOR_HEIGHT = 3.0f;
 
 
 // --- Utility: load shader from file ---
@@ -143,15 +158,64 @@ void processInput(GLFWwindow* window)
         firstMouse = true;
     }
 
-    //left mouse cursor to lock again
-    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
-    {
+    // Left mouse to lock cursor again
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        firstMouse = true;
     }
 
     if (glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS) {
         growingTree = true;
         targetTreeGrowth = 2.0f;
+    }
+    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS) {
+        growingTree = true;
+        targetTreeGrowth = 0.7f;
+    }
+    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
+        doorOpening = true;
+    }
+}
+
+// Door area on right wall (x=5): y 1-4, z -1.25 to 1.25
+bool rayIntersectsDoor(glm::vec3 rayOrigin, glm::vec3 rayDir) {
+    float wallX = 5.0f;
+    if (fabs(rayDir.x) < 0.001f) return false;
+    float t = (wallX - rayOrigin.x) / rayDir.x;
+    if (t <= 0.0f) return false;
+    glm::vec3 hit = rayOrigin + t * rayDir;
+    return hit.y >= 1.0f && hit.y <= 4.0f && hit.z >= -1.25f && hit.z <= 1.25f;
+}
+
+void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
+    if (button != GLFW_MOUSE_BUTTON_LEFT || action != GLFW_PRESS) return;
+
+    // Use center of screen when cursor locked (where player is looking), else use cursor pos
+    int width, height;
+    glfwGetFramebufferSize(window, &width, &height);
+    float ndcX, ndcY;
+    if (glfwGetInputMode(window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED) {
+        ndcX = 0.0f;
+        ndcY = 0.0f;
+    } else {
+        double mx, my;
+        glfwGetCursorPos(window, &mx, &my);
+        ndcX = (2.0f * mx / width) - 1.0f;
+        ndcY = 1.0f - (2.0f * my / height);
+    }
+
+    float aspect = (float)width / height;
+    float fov = glm::radians(60.0f);
+
+    glm::vec3 right = glm::normalize(glm::cross(cameraFront, cameraUp));
+    glm::vec3 rayDir = glm::normalize(
+        cameraFront +
+        right * (ndcX * aspect * tanf(fov / 2.0f)) +
+        cameraUp * (ndcY * tanf(fov / 2.0f))
+    );
+
+    if (rayIntersectsDoor(cameraPos, rayDir)) {
+        doorOpening = true;
     }
 }
 
@@ -179,6 +243,7 @@ int main() {
     }
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glfwSetCursorPosCallback(window, mouse_callback);
+    glfwSetMouseButtonCallback(window, mouse_button_callback);
 
 
     glEnable(GL_DEPTH_TEST);
@@ -323,27 +388,30 @@ int main() {
     std::vector<glm::vec3> lightPositions;
     std::vector<glm::vec3> lightColors;
 
-    // tree cone geometry parameters (match what you used in GenerateTreeGeometry)
-    float trunkHeight = 0.0f;
-    float coneH = 3.5f;
-    float coneR = 2.0f;
-    float coneBaseY = 0.0f;
+    // tree geometry parameters (match GenerateTreeGeometry: trunk + 4 foliage layers)
+    struct Layer { float yBase, height, radius; };
+    Layer layers[] = {
+        {0.6f, 1.4f, 1.8f},   // layer0
+        {1.58f, 1.2f, 1.3f},  // layer1
+        {2.38f, 1.0f, 0.9f},  // layer2
+        {2.88f, 0.8f, 0.5f}   // layer3
+    };
 
-    // deterministic random
     std::mt19937 rng(12345);
-    std::uniform_real_distribution<float> ud_h(0.05f, 0.95f); // height along cone (bottom=0)
+    std::uniform_int_distribution<int> ud_layer(0, 3);
+    std::uniform_real_distribution<float> ud_t(0.1f, 0.95f);
     std::uniform_real_distribution<float> ud_ang(0.0f, 2.0f * 3.14159265f);
     std::uniform_real_distribution<float> ud_color(0.0f, 1.0f);
 
-    // sample positions on cone surface
+    // sample positions on layered tree surface
     for (int i = 0; i < N_ORNAMENTS; ++i) {
-        float t = ud_h(rng); // 0..1 up the cone
-        // radius at that height (linear taper)
-        float localR = coneR * (1.0f - t);
+        int li = ud_layer(rng);
+        float t = ud_t(rng);
+        float localR = layers[li].radius * (1.0f - t);
         float ang = ud_ang(rng);
         float x = cos(ang) * localR;
         float z = sin(ang) * localR;
-        float y = coneBaseY + t * coneH;
+        float y = layers[li].yBase + t * layers[li].height;
         ornamentPositions.push_back(glm::vec3(x, y, z));
         // random ornament color (red/blue/gold/white)
         glm::vec3 c;
@@ -355,14 +423,15 @@ int main() {
         ornamentColors.push_back(c);
     }
 
-    // lights (emissive) — sample near outer cone, fewer
+    // lights (emissive) — sample on layered tree surface
     for (int i = 0; i < N_LIGHTS; ++i) {
-        float t = ud_h(rng);
-        float localR = coneR * (1.0f - t);
+        int li = ud_layer(rng);
+        float t = ud_t(rng);
+        float localR = layers[li].radius * (1.0f - t);
         float ang = ud_ang(rng);
         float x = cos(ang) * localR;
         float z = sin(ang) * localR;
-        float y = coneBaseY + t * coneH;
+        float y = layers[li].yBase + t * layers[li].height;
         lightPositions.push_back(glm::vec3(x, y, z));
         // colored lights
         glm::vec3 lc;
@@ -373,8 +442,8 @@ int main() {
         lightColors.push_back(lc);
     }
 
-    // star model transform parameters
-    glm::vec3 starPos = glm::vec3(0.0f, coneBaseY + coneH + 0.05f, 0.0f);
+    // star model transform parameters (top of tree)
+    glm::vec3 starPos = glm::vec3(0.0f, 3.68f + 0.05f, 0.0f);
     float starScale = 0.6f;
 
     // === PRESENTS AROUND THE TREE ===
@@ -483,6 +552,132 @@ int main() {
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(6*sizeof(float)));
     glEnableVertexAttribArray(2);
 
+    // === WINDOW MESH (back wall, between curtains) ===
+    std::vector<Vertex> windowVerts;
+    std::vector<unsigned int> windowIdx;
+    GenerateWindowMesh(windowVerts, windowIdx, 0.9f, 1.2f);
+    GLuint windowVAO, windowVBO, windowEBO;
+    glGenVertexArrays(1, &windowVAO);
+    glGenBuffers(1, &windowVBO);
+    glGenBuffers(1, &windowEBO);
+    glBindVertexArray(windowVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, windowVBO);
+    glBufferData(GL_ARRAY_BUFFER, windowVerts.size() * sizeof(Vertex), windowVerts.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, windowEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, windowIdx.size() * sizeof(unsigned int), windowIdx.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3*sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(6*sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glBindVertexArray(0);
+
+    // === PICTURE FRAMES ===
+    std::vector<Vertex> frameVerts;
+    std::vector<unsigned int> frameIdx;
+    size_t frameBorderCount;
+    GeneratePictureFrameMesh(frameVerts, frameIdx, frameBorderCount, 0.8f, 1.0f, 0.05f);
+    GLuint frameVAO, frameVBO, frameEBO;
+    glGenVertexArrays(1, &frameVAO);
+    glGenBuffers(1, &frameVBO);
+    glGenBuffers(1, &frameEBO);
+    glBindVertexArray(frameVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, frameVBO);
+    glBufferData(GL_ARRAY_BUFFER, frameVerts.size() * sizeof(Vertex), frameVerts.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, frameEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, frameIdx.size() * sizeof(unsigned int), frameIdx.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3*sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(6*sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glBindVertexArray(0);
+
+    // === MOUSE MESH ===
+    std::vector<Vertex> mouseVerts;
+    std::vector<unsigned int> mouseIdx;
+    GenerateMouseMesh(mouseVerts, mouseIdx);
+    GLuint mouseVAO, mouseVBO, mouseEBO;
+    glGenVertexArrays(1, &mouseVAO);
+    glGenBuffers(1, &mouseVBO);
+    glGenBuffers(1, &mouseEBO);
+    glBindVertexArray(mouseVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, mouseVBO);
+    glBufferData(GL_ARRAY_BUFFER, mouseVerts.size() * sizeof(Vertex), mouseVerts.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mouseEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, mouseIdx.size() * sizeof(unsigned int), mouseIdx.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3*sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(6*sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glBindVertexArray(0);
+
+    // === DOOR PANELS (right wall - slide open when cactus clicked) ===
+    float dhw = DOOR_WIDTH * 0.25f;
+    float dhh = DOOR_HEIGHT * 0.5f;
+    std::vector<Vertex> doorVerts = {
+        {{-dhw, -dhh, 0}, {0, 0, 1}, {0, 0}},
+        {{dhw, -dhh, 0}, {0, 0, 1}, {1, 0}},
+        {{dhw, dhh, 0}, {0, 0, 1}, {1, 1}},
+        {{-dhw, dhh, 0}, {0, 0, 1}, {0, 1}}
+    };
+    std::vector<unsigned int> doorIdx = {0, 1, 2, 0, 2, 3};
+    GLuint doorVAO, doorVBO, doorEBO;
+    glGenVertexArrays(1, &doorVAO);
+    glGenBuffers(1, &doorVBO);
+    glGenBuffers(1, &doorEBO);
+    glBindVertexArray(doorVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, doorVBO);
+    glBufferData(GL_ARRAY_BUFFER, doorVerts.size() * sizeof(Vertex), doorVerts.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, doorEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, doorIdx.size() * sizeof(unsigned int), doorIdx.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3*sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(6*sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glBindVertexArray(0);
+
+    // === RIGHT WALL FRAME (around door opening) ===
+    GLuint rightWallFrameVAO, rightWallFrameVBO, rightWallFrameEBO;
+    glGenVertexArrays(1, &rightWallFrameVAO);
+    glGenBuffers(1, &rightWallFrameVBO);
+    glGenBuffers(1, &rightWallFrameEBO);
+    glBindVertexArray(rightWallFrameVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, rightWallFrameVBO);
+    glBufferData(GL_ARRAY_BUFFER, rightWallFrameVertices.size() * sizeof(Vertex), rightWallFrameVertices.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, rightWallFrameEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, rightWallFrameIndices.size() * sizeof(unsigned int), rightWallFrameIndices.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3*sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(6*sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glBindVertexArray(0);
+
+    // === SECOND ROOM VAO (for door destination) ===
+    GLuint room2VAO, room2VBO, room2EBO;
+    glGenVertexArrays(1, &room2VAO);
+    glGenBuffers(1, &room2VBO);
+    glGenBuffers(1, &room2EBO);
+    glBindVertexArray(room2VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, room2VBO);
+    glBufferData(GL_ARRAY_BUFFER, room2Vertices.size() * sizeof(Vertex), room2Vertices.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, room2EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, room2Indices.size() * sizeof(unsigned int), room2Indices.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3*sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(6*sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glBindVertexArray(0);
 
     // --- Main Loop ---
     while (!glfwWindowShouldClose(window)) {
@@ -493,10 +688,22 @@ int main() {
         processInput(window);
 
         if (growingTree) {
-            treeGrowth += (targetTreeGrowth - treeGrowth) * deltaTime * 2.0f; // growth speed
+            treeGrowth += (targetTreeGrowth - treeGrowth) * deltaTime * 2.0f;
             if (fabs(treeGrowth - targetTreeGrowth) < 0.01f) {
                 treeGrowth = targetTreeGrowth;
                 growingTree = false;
+                treeJustFinished = true;
+            }
+        }
+        if (treeJustFinished && miceStartTime < 0.0f) {
+            miceStartTime = currentFrame;
+            treeJustFinished = false;
+        }
+        if (doorOpening) {
+            doorOpenAmount += deltaTime * 1.5f;
+            if (doorOpenAmount >= 1.0f) {
+                doorOpenAmount = 1.0f;
+                doorOpening = false;
             }
         }
 
@@ -541,12 +748,15 @@ int main() {
 
         glUniform1i(glGetUniformLocation(roomShader, "isPresent"), 0);
 
-        // Draw room
+        // Draw room (always omit solid right wall - we use frame + door panels)
         glUniform1i(glGetUniformLocation(roomShader, "isTree"), 0);
         glUniform3f(glGetUniformLocation(roomShader, "wallColor"),
                     0.55f, 0.35f, 0.20f); 
         glBindVertexArray(VAO);
-        glDrawElements(GL_TRIANGLES, roomIndices.size(), GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, roomIndicesWithoutRightWall.size(), GL_UNSIGNED_INT, 0);
+        // Right wall frame (around door)
+        glBindVertexArray(rightWallFrameVAO);
+        glDrawElements(GL_TRIANGLES, rightWallFrameIndices.size(), GL_UNSIGNED_INT, 0);
 
         // === Draw Curtains ===
         glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 1);
@@ -581,6 +791,95 @@ int main() {
         glUniform1i(glGetUniformLocation(roomShader, "isCurtain"), 0);
         glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 0);
 
+        // === Draw Windows (left wall x=-5, equally spaced, dark blue night sky) ===
+        glUniform1i(glGetUniformLocation(roomShader, "isWindow"), 1);
+        glUniform3f(glGetUniformLocation(roomShader, "windowColor"), 0.05f, 0.08f, 0.2f);  // dark blue night
+        float windowSpacing = 1.2f;
+        glm::mat4 winLeft = glm::mat4(1.0f);
+        winLeft = glm::translate(winLeft, glm::vec3(-4.99f, 2.1f, -windowSpacing));
+        winLeft = glm::rotate(winLeft, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+        glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(winLeft));
+        glBindVertexArray(windowVAO);
+        glDrawElements(GL_TRIANGLES, windowIdx.size(), GL_UNSIGNED_INT, 0);
+        glm::mat4 winRight = glm::mat4(1.0f);
+        winRight = glm::translate(winRight, glm::vec3(-4.99f, 2.1f, windowSpacing));
+        winRight = glm::rotate(winRight, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+        glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(winRight));
+        glDrawElements(GL_TRIANGLES, windowIdx.size(), GL_UNSIGNED_INT, 0);
+        glUniform1i(glGetUniformLocation(roomShader, "isWindow"), 0);
+
+        // === Draw Picture Frames (flower on left wall, cactus on right wall) ===
+        glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 1);
+        glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 0.4f, 0.25f, 0.15f);  // wood
+        glUniform1i(glGetUniformLocation(roomShader, "isPainting"), 0);
+        glBindVertexArray(frameVAO);
+        // Left wall: flower painting at x=-5 (face +X into room)
+        glm::mat4 frameLeft = glm::mat4(1.0f);
+        frameLeft = glm::translate(frameLeft, glm::vec3(-4.99f, 2.5f, 0.0f));
+        frameLeft = glm::rotate(frameLeft, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+        glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(frameLeft));
+        glDrawElements(GL_TRIANGLES, frameBorderCount, GL_UNSIGNED_INT, 0);
+        glUniform1i(glGetUniformLocation(roomShader, "isPainting"), 1);
+        glUniform1i(glGetUniformLocation(roomShader, "paintingType"), 0);
+        glDrawElements(GL_TRIANGLES, frameIdx.size() - frameBorderCount, GL_UNSIGNED_INT, (void*)(frameBorderCount * sizeof(unsigned int)));
+        glUniform1i(glGetUniformLocation(roomShader, "isPainting"), 0);
+        glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 0);
+
+        // === Draw Mice (after tree stops growing, run left to right) ===
+        if (miceStartTime >= 0.0f) {
+            float miceT = (currentFrame - miceStartTime) / MICE_RUN_DURATION;
+            if (miceT < 1.0f) {
+                float runX = -4.5f + miceT * 9.0f;  // -4.5 to 4.5
+                glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 1);
+                glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 0.35f, 0.3f, 0.28f);
+                for (int m = 0; m < 6; m++) {
+                    float offset = m * 0.15f;
+                    float mx = runX + offset * (m % 2 == 0 ? 1.0f : -1.0f);
+                    glm::mat4 mouseM = glm::mat4(1.0f);
+                    mouseM = glm::translate(mouseM, glm::vec3(mx, 0.06f, 0.2f + m * 0.2f));
+                    mouseM = glm::scale(mouseM, glm::vec3(1.2f));
+                    glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(mouseM));
+                    glBindVertexArray(mouseVAO);
+                    glDrawElements(GL_TRIANGLES, mouseIdx.size(), GL_UNSIGNED_INT, 0);
+                }
+                glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 0);
+            }
+        }
+
+        // === Draw Second Room FIRST (behind door - shares right wall at x=5) ===
+        if (doorOpenAmount > 0.01f) {
+            glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 0);
+            glBindVertexArray(room2VAO);
+            glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
+            glUniform3f(glGetUniformLocation(roomShader, "wallColor"), 1.0f, 1.0f, 1.0f);  // floor
+            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+            glUniform3f(glGetUniformLocation(roomShader, "wallColor"), 1.0f, 1.0f, 1.0f);  // ceiling
+            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (void*)(6 * sizeof(unsigned int)));
+            glUniform3f(glGetUniformLocation(roomShader, "wallColor"), 0.68f, 0.85f, 0.95f);  // light blue walls
+            glDrawElements(GL_TRIANGLES, 18, GL_UNSIGNED_INT, (void*)(12 * sizeof(unsigned int)));
+            glUniform3f(glGetUniformLocation(roomShader, "wallColor"), 0.55f, 0.35f, 0.20f);
+        }
+
+        // === Draw Door Panels (fill door opening; slide open when door area clicked or E pressed) ===
+        {
+            float slideDist = doorOpenAmount * 1.5f;
+            float leftPanelZ = -0.625f - slideDist;
+            float rightPanelZ = 0.625f + slideDist;
+            glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 1);
+            glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 0.55f, 0.35f, 0.20f);  // match wall
+            glBindVertexArray(doorVAO);
+            glm::mat4 doorLeft = glm::mat4(1.0f);
+            doorLeft = glm::translate(doorLeft, glm::vec3(5.0f, 2.5f, leftPanelZ));
+            doorLeft = glm::rotate(doorLeft, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+            glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(doorLeft));
+            glDrawElements(GL_TRIANGLES, doorIdx.size(), GL_UNSIGNED_INT, 0);
+            glm::mat4 doorRight = glm::mat4(1.0f);
+            doorRight = glm::translate(doorRight, glm::vec3(5.0f, 2.5f, rightPanelZ));
+            doorRight = glm::rotate(doorRight, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+            glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(doorRight));
+            glDrawElements(GL_TRIANGLES, doorIdx.size(), GL_UNSIGNED_INT, 0);
+            glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 0);
+        }
 
         // Draw tree
         glUniform1i(glGetUniformLocation(roomShader, "isTree"), 1);

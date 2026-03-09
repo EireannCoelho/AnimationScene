@@ -95,6 +95,36 @@ static void buildNeedleCone(float radius, float height, int segments, float yOff
     }
 }
 
+// Build tapered trunk with bark-like texture
+static void buildTrunk(float baseR, float topR, float H, int seg, float y0,
+                       std::vector<Vertex>& verts,
+                       std::vector<unsigned>& idx)
+{
+    int base = verts.size();
+
+    for (int i = 0; i <= seg; i++) {
+        float t = float(i) / seg;
+        float a = t * glm::two_pi<float>();
+
+        float x = cos(a), z = sin(a);
+        float R_bot = baseR * (1.0f + noise(x * 5.0f, z * 5.0f) * 0.15f);
+        float R_top = topR * (1.0f + noise(x * 5.0f + 1.0f, z * 5.0f + 1.0f) * 0.1f);
+
+        glm::vec3 n = glm::normalize(glm::vec3(x, 0, z));
+        addV(verts, glm::vec3(R_bot*x, y0, R_bot*z), n, glm::vec2(t, 0));
+        addV(verts, glm::vec3(R_top*x, y0 + H, R_top*z), n, glm::vec2(t, 1));
+    }
+
+    for (int i = 0; i < seg; i++) {
+        int i0 = base + 2*i;
+        int i1 = i0 + 1;
+        int i2 = i0 + 2;
+        int i3 = i0 + 3;
+        idx.push_back(i0); idx.push_back(i2); idx.push_back(i1);
+        idx.push_back(i1); idx.push_back(i2); idx.push_back(i3);
+    }
+}
+
 // Main entry ---------------------------------------------------------------------
 void GenerateTreeGeometry(std::vector<Vertex>& verts,
                           std::vector<unsigned>& idx)
@@ -104,13 +134,34 @@ void GenerateTreeGeometry(std::vector<Vertex>& verts,
 
     int seg = 48;
 
-    // trunk
-    //buildCylinder(0.25f, 1.2f, seg, 0.0f, verts, idx);
+    // Realistic tree: trunk + layered foliage cones
+    float trunkH = 0.6f;
+    float trunkBaseR = 0.35f;
+    float trunkTopR = 0.28f;
 
-    // one large cone, bottom touching floor
-    float baseY = 0.0f;        // where trunk ends
-    float coneH = 3.5f;        // tree height
-    float coneR = 2.0f;        // bottom width
+    buildTrunk(trunkBaseR, trunkTopR, trunkH, seg, 0.0f, verts, idx);
 
-    buildNeedleCone(coneR, coneH, seg, baseY, verts, idx);
+    // Bottom foliage layer (widest)
+    float layer0Y = trunkH;
+    float layer0H = 1.4f;
+    float layer0R = 1.8f;
+    buildNeedleCone(layer0R, layer0H, seg, layer0Y, verts, idx);
+
+    // Middle foliage layer
+    float layer1Y = layer0Y + layer0H * 0.7f;  // overlap slightly
+    float layer1H = 1.2f;
+    float layer1R = 1.3f;
+    buildNeedleCone(layer1R, layer1H, seg, layer1Y, verts, idx);
+
+    // Upper foliage layer
+    float layer2Y = layer1Y + layer1H * 0.6f;
+    float layer2H = 1.0f;
+    float layer2R = 0.9f;
+    buildNeedleCone(layer2R, layer2H, seg, layer2Y, verts, idx);
+
+    // Top cone (tree tip)
+    float layer3Y = layer2Y + layer2H * 0.5f;
+    float layer3H = 0.8f;
+    float layer3R = 0.5f;
+    buildNeedleCone(layer3R, layer3H, seg, layer3Y, verts, idx);
 }

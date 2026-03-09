@@ -4,8 +4,12 @@ LDFLAGS = -L/opt/homebrew/lib -lglew -lglfw -framework OpenGL
 
 SOURCES = main.cpp \
           geometry/room_geometry.cpp \
+          geometry/room2_geometry.cpp \
           geometry/tree_geometry.cpp \
-          geometry/curtain_geometry.cpp
+          geometry/curtain_geometry.cpp \
+          geometry/window_geometry.cpp \
+          geometry/mouse_geometry.cpp \
+          geometry/picture_frame_geometry.cpp
 
 OBJECTS = $(SOURCES:.cpp=.o)
 
