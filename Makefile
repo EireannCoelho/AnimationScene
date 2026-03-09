@@ -11,7 +11,8 @@ SOURCES = main.cpp \
           geometry/mouse_geometry.cpp \
           geometry/picture_frame_geometry.cpp \
           geometry/forest_tree_geometry.cpp \
-          geometry/grandfather_clock_geometry.cpp
+          geometry/grandfather_clock_geometry.cpp \
+          geometry/snow_room_tree_geometry.cpp
 
 OBJECTS = $(SOURCES:.cpp=.o)
 

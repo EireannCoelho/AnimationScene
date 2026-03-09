@@ -21,6 +21,7 @@
 #include "geometry/picture_frame_geometry.h"
 #include "geometry/forest_tree_geometry.h"
 #include "geometry/grandfather_clock_geometry.h"
+#include "geometry/snow_room_tree_geometry.h"
 
 
 // ===== CAMERA GLOBALS =====
@@ -53,7 +54,7 @@ const float DOOR_WIDTH = 2.5f;
 const float DOOR_HEIGHT = 3.0f;  // door from floor (y=0) to y=3
 
 // Snow room particles
-const int N_SNOW = 900;
+const int N_SNOW = 2000;
 
 
 // --- Utility: load shader from file ---
@@ -763,6 +764,77 @@ int main() {
     glEnableVertexAttribArray(2);
     glBindVertexArray(0);
 
+    // === 3D FOREST TREES (snow room - walking through forest) ===
+    std::vector<Vertex> snowTreeTrunkVerts, snowTreeFoliageVerts;
+    std::vector<unsigned int> snowTreeTrunkIdx, snowTreeFoliageIdx;
+    std::vector<Vertex> snowTreeFoliage2Verts;
+    std::vector<unsigned int> snowTreeFoliage2Idx;
+    GenerateSnowRoomTreeTrunk(snowTreeTrunkVerts, snowTreeTrunkIdx, 0.06f, 0.35f);
+    GenerateSnowRoomTreeFoliage(snowTreeFoliageVerts, snowTreeFoliageIdx, 0.2f, 0.7f, 0.35f);
+    GenerateSnowRoomTreeFoliage2Level(snowTreeFoliage2Verts, snowTreeFoliage2Idx, 0.25f, 0.5f, 0.12f, 0.45f, 0.35f);
+    GLuint snowTreeTrunkVAO, snowTreeTrunkVBO, snowTreeTrunkEBO;
+    GLuint snowTreeFoliageVAO, snowTreeFoliageVBO, snowTreeFoliageEBO;
+    glGenVertexArrays(1, &snowTreeTrunkVAO);
+    glGenBuffers(1, &snowTreeTrunkVBO);
+    glGenBuffers(1, &snowTreeTrunkEBO);
+    glBindVertexArray(snowTreeTrunkVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, snowTreeTrunkVBO);
+    glBufferData(GL_ARRAY_BUFFER, snowTreeTrunkVerts.size() * sizeof(Vertex), snowTreeTrunkVerts.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, snowTreeTrunkEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, snowTreeTrunkIdx.size() * sizeof(unsigned int), snowTreeTrunkIdx.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3*sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(6*sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glBindVertexArray(0);
+    glGenVertexArrays(1, &snowTreeFoliageVAO);
+    glGenBuffers(1, &snowTreeFoliageVBO);
+    glGenBuffers(1, &snowTreeFoliageEBO);
+    glBindVertexArray(snowTreeFoliageVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, snowTreeFoliageVBO);
+    glBufferData(GL_ARRAY_BUFFER, snowTreeFoliageVerts.size() * sizeof(Vertex), snowTreeFoliageVerts.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, snowTreeFoliageEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, snowTreeFoliageIdx.size() * sizeof(unsigned int), snowTreeFoliageIdx.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3*sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(6*sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glBindVertexArray(0);
+    GLuint snowTreeFoliage2VAO, snowTreeFoliage2VBO, snowTreeFoliage2EBO;
+    glGenVertexArrays(1, &snowTreeFoliage2VAO);
+    glGenBuffers(1, &snowTreeFoliage2VBO);
+    glGenBuffers(1, &snowTreeFoliage2EBO);
+    glBindVertexArray(snowTreeFoliage2VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, snowTreeFoliage2VBO);
+    glBufferData(GL_ARRAY_BUFFER, snowTreeFoliage2Verts.size() * sizeof(Vertex), snowTreeFoliage2Verts.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, snowTreeFoliage2EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, snowTreeFoliage2Idx.size() * sizeof(unsigned int), snowTreeFoliage2Idx.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3*sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(6*sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glBindVertexArray(0);
+
+    const int N_SNOW_ROOM_TREES = 35;
+    std::vector<glm::vec3> snowRoomTreePos(N_SNOW_ROOM_TREES);
+    std::vector<float> snowRoomTreeScale(N_SNOW_ROOM_TREES);
+    std::mt19937 treeRng(123);
+    std::uniform_real_distribution<float> treeX(6.0f, 24.0f);
+    std::uniform_real_distribution<float> treeZ(-4.0f, 4.0f);
+    std::uniform_real_distribution<float> treeScale(2.2f, 4.2f);
+    std::vector<int> snowRoomTreeStyle(N_SNOW_ROOM_TREES);  // 0 = single cone, 1 = 2-level
+    for (int i = 0; i < N_SNOW_ROOM_TREES; i++) {
+        snowRoomTreePos[i] = glm::vec3(treeX(treeRng), 0.0f, treeZ(treeRng));
+        snowRoomTreeScale[i] = treeScale(treeRng);
+        snowRoomTreeStyle[i] = (i % 2 == 0) ? 1 : 0;  // half get 2-level style
+    }
+
     // Snow particles (falling in snow room x 5-25, z -5 to 5)
     std::vector<glm::vec3> snowPositions(N_SNOW);
     std::mt19937 snowRng(42);
@@ -974,51 +1046,156 @@ int main() {
             glUniform3f(glGetUniformLocation(roomShader, "wallColor"), 1.0f, 1.0f, 1.0f);  // ceiling white
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (void*)(6 * sizeof(unsigned int)));
             glUniform1i(glGetUniformLocation(roomShader, "isSnowSurface"), 0);
-            glUniform1i(glGetUniformLocation(roomShader, "isSnowSurface"), 1);
+            glUniform1i(glGetUniformLocation(roomShader, "isSnowRoomWall"), 1);  // flat light blue, no lighting variation
             glUniform3f(glGetUniformLocation(roomShader, "wallColor"), 0.68f, 0.85f, 0.95f);  // light blue all walls
             glDrawElements(GL_TRIANGLES, 18, GL_UNSIGNED_INT, (void*)(12 * sizeof(unsigned int)));
-            glUniform1i(glGetUniformLocation(roomShader, "isSnowSurface"), 0);
+            glUniform1i(glGetUniformLocation(roomShader, "isSnowRoomWall"), 0);
 
-            // Grey forest trees - trunk base at floor, overlapping like back wall on all walls
+            // Forest trees - trunk (brown) + foliage (dark green, white snow tips)
             glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 1);
-            glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 0.4f, 0.4f, 0.45f);
+            glUniform1i(glGetUniformLocation(roomShader, "isForestTree"), 0);
             glBindVertexArray(forestTreeVAO);
-            // Back wall - trees with overlap, trunk base at floor (y=0)
-            float backZ[] = {-4.2f,-3.8f,-2.9f,-2.1f,-1.8f,-0.5f,0.2f,0.8f,1.5f,2.0f,2.8f,3.8f,4.1f};
-            float backY[] = {0.0f,0.5f,0.9f,1.3f,1.8f,2.2f,2.6f,3.0f,3.5f};
-            for (int i = 0; i < 13; i++) {
-                for (int j = 0; j < 9; j++) {
-                    glm::mat4 T = glm::mat4(1.0f);
-                    T = glm::translate(T, glm::vec3(24.99f, backY[j], backZ[i]));
-                    T = glm::rotate(T, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-                    T = glm::scale(T, glm::vec3(0.6f + (i + j) % 4 * 0.25f));
-                    glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(T));
-                    glDrawElements(GL_TRIANGLES, forestTreeIdx.size(), GL_UNSIGNED_INT, 0);
+            const size_t forestTrunkIdxCount = 6;   // trunk quad = 2 tris
+            const size_t forestFoliageIdxCount = 3; // foliage tri
+            const float outlineScale = 1.07f;
+            const float outlineColor[] = {0.02f, 0.06f, 0.02f};
+            const float wallHeight = 4.6f;  // cap below ceiling (5) for safety
+            const float heightScale = 1.1f;  // +10% to all tree heights
+            const float heightPattern[] = {0.60f, 0.75f, 0.90f, 0.80f, 0.75f};  // % of wall height
+            const int nPattern = 5;
+            glUniform1i(glGetUniformLocation(roomShader, "isForestTreeWall"), 1);
+            // Back wall - single row, spaced, height pattern
+            float backZ[] = {-4.0f, -2.4f, -0.8f, 0.8f, 2.4f, 4.0f};  // 6 trees, ~1.6 spacing
+            const int nBack = 6;
+            glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), outlineColor[0], outlineColor[1], outlineColor[2]);
+            for (int i = 0; i < nBack; i++) {
+                float s = heightPattern[i % nPattern] * wallHeight / 1.5f * heightScale;
+                glm::mat4 T = glm::mat4(1.0f);
+                T = glm::translate(T, glm::vec3(24.99f, 0.0f, backZ[i]));
+                T = glm::rotate(T, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+                T = glm::scale(T, glm::vec3(s * outlineScale));
+                glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(T));
+                glDrawElements(GL_TRIANGLES, forestTrunkIdxCount + forestFoliageIdxCount, GL_UNSIGNED_INT, 0);
+            }
+            glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 0.35f, 0.22f, 0.12f);
+            for (int i = 0; i < nBack; i++) {
+                float s = heightPattern[i % nPattern] * wallHeight / 1.5f * heightScale;
+                glm::mat4 T = glm::mat4(1.0f);
+                T = glm::translate(T, glm::vec3(24.99f, 0.0f, backZ[i]));
+                T = glm::rotate(T, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+                T = glm::scale(T, glm::vec3(s));
+                glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(T));
+                glDrawElements(GL_TRIANGLES, forestTrunkIdxCount, GL_UNSIGNED_INT, 0);
+            }
+            glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 0.05f, 0.14f, 0.05f);
+            glUniform1i(glGetUniformLocation(roomShader, "isForestTree"), 1);
+            for (int i = 0; i < nBack; i++) {
+                float s = heightPattern[i % nPattern] * wallHeight / 1.5f * heightScale;
+                glm::mat4 T = glm::mat4(1.0f);
+                T = glm::translate(T, glm::vec3(24.97f, 0.0f, backZ[i]));
+                T = glm::rotate(T, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+                T = glm::scale(T, glm::vec3(s));
+                glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(T));
+                glDrawElements(GL_TRIANGLES, forestFoliageIdxCount, GL_UNSIGNED_INT, (void*)(forestTrunkIdxCount * sizeof(unsigned int)));
+            }
+            // Left wall - single row, spaced, height pattern
+            float leftX[] = {7.0f, 10.0f, 13.0f, 16.0f, 19.0f, 22.0f};  // 6 trees, ~3 spacing
+            const int nLeft = 6;
+            glUniform1i(glGetUniformLocation(roomShader, "isForestTree"), 0);
+            glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), outlineColor[0], outlineColor[1], outlineColor[2]);
+            for (int i = 0; i < nLeft; i++) {
+                float s = heightPattern[i % nPattern] * wallHeight / 1.5f * heightScale;
+                glm::mat4 T = glm::mat4(1.0f);
+                T = glm::translate(T, glm::vec3(leftX[i], 0.0f, -4.99f));
+                T = glm::scale(T, glm::vec3(s * outlineScale));
+                glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(T));
+                glDrawElements(GL_TRIANGLES, forestTrunkIdxCount + forestFoliageIdxCount, GL_UNSIGNED_INT, 0);
+            }
+            glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 0.35f, 0.22f, 0.12f);
+            for (int i = 0; i < nLeft; i++) {
+                float s = heightPattern[i % nPattern] * wallHeight / 1.5f * heightScale;
+                glm::mat4 T = glm::mat4(1.0f);
+                T = glm::translate(T, glm::vec3(leftX[i], 0.0f, -4.99f));
+                T = glm::scale(T, glm::vec3(s));
+                glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(T));
+                glDrawElements(GL_TRIANGLES, forestTrunkIdxCount, GL_UNSIGNED_INT, 0);
+            }
+            glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 0.05f, 0.14f, 0.05f);
+            glUniform1i(glGetUniformLocation(roomShader, "isForestTree"), 1);
+            for (int i = 0; i < nLeft; i++) {
+                float s = heightPattern[i % nPattern] * wallHeight / 1.5f * heightScale;
+                glm::mat4 T = glm::mat4(1.0f);
+                T = glm::translate(T, glm::vec3(leftX[i], 0.0f, -4.97f));
+                T = glm::scale(T, glm::vec3(s));
+                glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(T));
+                glDrawElements(GL_TRIANGLES, forestFoliageIdxCount, GL_UNSIGNED_INT, (void*)(forestTrunkIdxCount * sizeof(unsigned int)));
+            }
+            // Right wall - single row, spaced, height pattern
+            glUniform1i(glGetUniformLocation(roomShader, "isForestTree"), 0);
+            glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), outlineColor[0], outlineColor[1], outlineColor[2]);
+            for (int i = 0; i < nLeft; i++) {
+                float s = heightPattern[i % nPattern] * wallHeight / 1.5f * heightScale;
+                glm::mat4 T = glm::mat4(1.0f);
+                T = glm::translate(T, glm::vec3(leftX[i], 0.0f, 4.99f));
+                T = glm::rotate(T, glm::radians(180.0f), glm::vec3(0, 1, 0));
+                T = glm::scale(T, glm::vec3(s * outlineScale));
+                glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(T));
+                glDrawElements(GL_TRIANGLES, forestTrunkIdxCount + forestFoliageIdxCount, GL_UNSIGNED_INT, 0);
+            }
+            glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 0.35f, 0.22f, 0.12f);
+            for (int i = 0; i < nLeft; i++) {
+                float s = heightPattern[i % nPattern] * wallHeight / 1.5f * heightScale;
+                glm::mat4 T = glm::mat4(1.0f);
+                T = glm::translate(T, glm::vec3(leftX[i], 0.0f, 4.99f));
+                T = glm::rotate(T, glm::radians(180.0f), glm::vec3(0, 1, 0));
+                T = glm::scale(T, glm::vec3(s));
+                glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(T));
+                glDrawElements(GL_TRIANGLES, forestTrunkIdxCount, GL_UNSIGNED_INT, 0);
+            }
+            glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 0.05f, 0.14f, 0.05f);
+            glUniform1i(glGetUniformLocation(roomShader, "isForestTree"), 1);
+            for (int i = 0; i < nLeft; i++) {
+                float s = heightPattern[i % nPattern] * wallHeight / 1.5f * heightScale;
+                glm::mat4 T = glm::mat4(1.0f);
+                T = glm::translate(T, glm::vec3(leftX[i], 0.0f, 4.97f));
+                T = glm::rotate(T, glm::radians(180.0f), glm::vec3(0, 1, 0));
+                T = glm::scale(T, glm::vec3(s));
+                glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(T));
+                glDrawElements(GL_TRIANGLES, forestFoliageIdxCount, GL_UNSIGNED_INT, (void*)(forestTrunkIdxCount * sizeof(unsigned int)));
+            }
+            glUniform1i(glGetUniformLocation(roomShader, "isForestTree"), 0);
+            glUniform1i(glGetUniformLocation(roomShader, "isForestTreeWall"), 0);
+            glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 0);
+
+            // 3D forest trees - trunk (brown) + foliage (dark green with white snow tips)
+            glUniform1i(glGetUniformLocation(roomShader, "isForestTree"), 0);
+            glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 1);
+            glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 0.35f, 0.22f, 0.12f);  // bark brown
+            glBindVertexArray(snowTreeTrunkVAO);
+            for (int i = 0; i < N_SNOW_ROOM_TREES; i++) {
+                glm::mat4 T = glm::mat4(1.0f);
+                T = glm::translate(T, snowRoomTreePos[i]);
+                T = glm::scale(T, glm::vec3(snowRoomTreeScale[i] * 1.1f));
+                glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(T));
+                glDrawElements(GL_TRIANGLES, snowTreeTrunkIdx.size(), GL_UNSIGNED_INT, 0);
+            }
+            glUniform3f(glGetUniformLocation(roomShader, "overrideColor"), 0.05f, 0.14f, 0.05f);  // dark green
+            glUniform1i(glGetUniformLocation(roomShader, "isForestTree"), 1);
+            glUniform1i(glGetUniformLocation(roomShader, "isForestTreeWall"), 0);  // ground: white at tips
+            for (int i = 0; i < N_SNOW_ROOM_TREES; i++) {
+                glm::mat4 T = glm::mat4(1.0f);
+                T = glm::translate(T, snowRoomTreePos[i]);
+                T = glm::scale(T, glm::vec3(snowRoomTreeScale[i] * 1.1f));
+                glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(T));
+                if (snowRoomTreeStyle[i] == 1) {
+                    glBindVertexArray(snowTreeFoliage2VAO);
+                    glDrawElements(GL_TRIANGLES, snowTreeFoliage2Idx.size(), GL_UNSIGNED_INT, 0);
+                } else {
+                    glBindVertexArray(snowTreeFoliageVAO);
+                    glDrawElements(GL_TRIANGLES, snowTreeFoliageIdx.size(), GL_UNSIGNED_INT, 0);
                 }
             }
-            // Left wall - same overlap logic, trunk at floor
-            float leftX[] = {6.2f,7.5f,8.8f,10.2f,11.5f,12.9f,14.2f,15.6f,16.9f,18.3f,19.6f,21.0f,22.3f,23.7f};
-            float leftY[] = {0.0f,0.5f,0.9f,1.3f,1.8f,2.2f,2.6f,3.0f,3.5f};
-            for (int i = 0; i < 14; i++) {
-                for (int j = 0; j < 9; j++) {
-                    glm::mat4 T = glm::mat4(1.0f);
-                    T = glm::translate(T, glm::vec3(leftX[i], leftY[j], -4.99f));
-                    T = glm::scale(T, glm::vec3(0.6f + (i + j) % 4 * 0.25f));
-                    glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(T));
-                    glDrawElements(GL_TRIANGLES, forestTreeIdx.size(), GL_UNSIGNED_INT, 0);
-                }
-            }
-            // Right wall - same overlap logic
-            for (int i = 0; i < 14; i++) {
-                for (int j = 0; j < 9; j++) {
-                    glm::mat4 T = glm::mat4(1.0f);
-                    T = glm::translate(T, glm::vec3(leftX[i], leftY[j], 4.99f));
-                    T = glm::rotate(T, glm::radians(180.0f), glm::vec3(0, 1, 0));
-                    T = glm::scale(T, glm::vec3(0.6f + (i + j) % 4 * 0.25f));
-                    glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(T));
-                    glDrawElements(GL_TRIANGLES, forestTreeIdx.size(), GL_UNSIGNED_INT, 0);
-                }
-            }
+            glUniform1i(glGetUniformLocation(roomShader, "isForestTree"), 0);
             glUniform1i(glGetUniformLocation(roomShader, "useOverrideColor"), 0);
 
             // Falling snow - white circles
@@ -1036,7 +1213,7 @@ int main() {
             for (int i = 0; i < N_SNOW; i++) {
                 glm::mat4 snowM = glm::mat4(1.0f);
                 snowM = glm::translate(snowM, snowPositions[i]);
-                snowM = glm::scale(snowM, glm::vec3(0.04f));
+                snowM = glm::scale(snowM, glm::vec3(0.07f));
                 glUniformMatrix4fv(glGetUniformLocation(roomShader, "model"), 1, GL_FALSE, glm::value_ptr(snowM));
                 glDrawElements(GL_TRIANGLES, sphereIdx.size(), GL_UNSIGNED_INT, 0);
             }

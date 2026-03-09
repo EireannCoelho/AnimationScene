@@ -36,6 +36,10 @@ uniform int isPainting;
 uniform int paintingType;  // 0=flower, 1=cactus
 
 uniform int isSnowSurface;  // 1 = brighter ambient for white floor/ceiling
+uniform int isSnowRoomWall;  // 1 = flat light blue, no lighting variation (all walls same)
+
+uniform int isForestTree;   // 1 = foliage: dark green base, white snow tips (uses fragUV.y)
+uniform int isForestTreeWall;  // 1 = wall trees: white at base (snow), dark green at tip; 0 = ground: white at tip
 
 void main()
 {
@@ -48,6 +52,18 @@ void main()
     // 1. override (ornaments, star, bulbs)
     if (useOverrideColor == 1 && isPresent == 0 && isCurtain == 0) {
         baseColor = overrideColor;
+        // Forest tree foliage
+        if (isForestTree == 1) {
+            if (isForestTreeWall == 1) {
+                // Wall: just a little white at base (snow), keep the fade
+                float snowBlend = smoothstep(0.5, 0.15, fragUV.y);
+                baseColor = mix(baseColor, vec3(0.92, 0.95, 0.98), snowBlend * 0.35);
+            } else {
+                // Ground: flipped - white at base, green at tips (experiment)
+                float greenBlend = smoothstep(0.0, 0.8, fragUV.y);
+                baseColor = mix(vec3(0.96, 0.98, 1.0), baseColor, greenBlend);
+            }
+        }
     }
 
     // 2. Tree
@@ -186,5 +202,12 @@ void main()
         emis = baseColor * emissiveStrength * pulse;
     }
 
-    fragColor = vec4(ambient + diffuse + specular + emis, 1.0);
+    // Snow room walls: flat color, fade top to white (blend into ceiling)
+    if (isSnowRoomWall == 1) {
+        float fadeBlend = smoothstep(2.5, 5.0, fragPos.y);
+        vec3 wallColorFaded = mix(baseColor, vec3(1.0, 1.0, 1.0), fadeBlend);
+        fragColor = vec4(wallColorFaded, 1.0);
+    } else {
+        fragColor = vec4(ambient + diffuse + specular + emis, 1.0);
+    }
 }
